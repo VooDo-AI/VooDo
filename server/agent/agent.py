@@ -123,11 +123,10 @@ def run_agent(
         )
         emit(AgentEvent(kind="error", payload={"msg": msg}))
         return SolutionRecord(problem_summary=message.text[:500], success=False)
-    if not mock_llm and not settings.openrouter_api_key.strip():
+    if not mock_llm and not settings.llm_api_key.strip():
         msg = (
-            "OPENROUTER_API_KEY is not set. Add it to your .env "
-            "(get a key at https://openrouter.ai/keys) and restart the "
-            "backend, or run with MOCK_LLM=1 to skip the real LLM."
+            "LLM_API_KEY is not set. Add it to your .env "
+            "and restart the backend, or run with MOCK_LLM=1 to skip the real LLM."
         )
         emit(AgentEvent(kind="error", payload={"msg": msg}))
         return SolutionRecord(problem_summary=message.text[:500], success=False)
