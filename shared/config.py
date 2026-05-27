@@ -27,12 +27,10 @@ _load_dotenv()
 
 @dataclass(frozen=True)
 class Settings:
-    # LLM provider — OpenRouter (OpenAI-compatible hosted gateway)
-    openrouter_base_url: str = os.getenv(
-        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
-    )
-    llm_model: str = os.getenv("LLM_MODEL", "qwen/qwen3-vl-235b-a22b-thinking")
-    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+    # LLM provider — OpenAI or compatible API
+    llm_base_url: str | None = os.getenv("LLM_BASE_URL")
+    llm_model: str = os.getenv("LLM_MODEL", "gpt-4o")
+    llm_api_key: str = os.getenv("LLM_API_KEY", "")
 
     # Postgres + pgvector
     database_url: str = os.getenv(
@@ -102,8 +100,8 @@ def _validate_secrets() -> None:
     """
     if settings.prod_mode:
         problems: list[str] = []
-        if not settings.openrouter_api_key.strip():
-            problems.append("OPENROUTER_API_KEY must be set in VOODO_PROD=1")
+        if not settings.llm_api_key.strip():
+            problems.append("LLM_API_KEY must be set in VOODO_PROD=1")
         if not settings.executor_token or len(settings.executor_token) < 16:
             problems.append("EXECUTOR_TOKEN must be set and >= 16 chars in VOODO_PROD=1")
         if not settings.it_password or settings.it_password in ("admin", "password", ""):

@@ -423,8 +423,8 @@ class LLMClient:
         else:
             from openai import OpenAI
             self._client = OpenAI(
-                base_url=settings.openrouter_base_url,
-                api_key=settings.openrouter_api_key or "EMPTY",
+                base_url=settings.llm_base_url,
+                api_key=settings.llm_api_key or "EMPTY",
             )
 
     @property

@@ -82,7 +82,7 @@ Security is not an afterthought — it is designed into every layer:
 The Windows executor is a thin client that dials out to the backend over WebSocket — the backend never connects inward. Users behind NAT or corporate firewalls need zero port-forwarding or VPN configuration.
 
 ### LLM-Agnostic Backend
-Models are served via [OpenRouter](https://openrouter.ai) — any vision-capable, tool-calling model on the gateway works. The default is `qwen/qwen3-vl-235b-a22b-thinking`. Switch by setting `LLM_MODEL` in `.env`.
+Models are served via any OpenAI-compatible API (e.g. OpenAI, Anthropic, Gemini, or OpenRouter). The default model is `gpt-4o`. Switch by setting `LLM_MODEL` and `LLM_BASE_URL` in `.env`.
 
 ---
 
@@ -101,12 +101,12 @@ Models are served via [OpenRouter](https://openrouter.ai) — any vision-capable
 └────────┬────────────────────────────────┘     └──────────────────────────┘
          │                                              ▲
          ▼                                              │
-   OpenRouter (hosted LLM)                              │ (chat UI in any browser)
-   https://openrouter.ai/api/v1                         │
+   OpenAI or compatible LLM API                           │ (chat UI in any browser)
+   https://api.openai.com/v1                            │
                                                 http://<backend-host>:7860
 ```
 
-The Windows executor is a ~300-line service that handles screenshots, mouse/keyboard, and system diagnostics. The backend orchestrates the agent loop and proxies model calls to OpenRouter. The user opens the chat UI in any browser.
+The Windows executor is a ~300-line service that handles screenshots, mouse/keyboard, and system diagnostics. The backend orchestrates the agent loop and proxies model calls to the configured LLM provider. The user opens the chat UI in any browser.
 
 ---
 
@@ -130,26 +130,25 @@ The Windows executor is a ~300-line service that handles screenshots, mouse/keyb
 
 ## Quickstart
 
-### 0. Get an OpenRouter API key
+### 0. Get an LLM API key
 
-Sign up at [openrouter.ai](https://openrouter.ai), create a key at [openrouter.ai/keys](https://openrouter.ai/keys), copy it.
+Get an API key for your preferred LLM provider (e.g., OpenAI, Anthropic, Gemini).
 
 ### 1. Configure `.env`
 
 ```bash
 cp .env.example .env
-# Edit .env: paste OPENROUTER_API_KEY, generate EXECUTOR_TOKEN, set passwords.
+# Edit .env: paste LLM_API_KEY, generate EXECUTOR_TOKEN, set passwords.
 # EXECUTOR_TOKEN can be generated with:
 #   python -c "import secrets; print(secrets.token_hex(24))"
 ```
 
-### 2. Backend (Docker)
+### 2. Backend (Local Execution)
 
 ```bash
-bash server/scripts/dev_all.sh
-# Brings up Postgres + the backend in compose. Seeds 40 canned Windows fixes
-# on first run. Logs:
-#   docker compose logs -f backend
+# Run the backend natively without Docker
+# Make sure to set SKIP_DB=1 in .env to skip Postgres requirements
+python -m uvicorn server.app.main:app --host 0.0.0.0 --port 7860
 ```
 
 ### 3. Windows machine (the one being fixed)
@@ -171,7 +170,7 @@ Navigate to `http://<backend-host>:7860` in any browser. Describe your problem. 
 | Flag | Effect |
 |---|---|
 | `MOCK_AGENT=1` | Returns canned events — pure UI development, no agent needed |
-| `MOCK_LLM=1` | Real agent loop with canned LLM responses — needs executor but not OpenRouter |
+| `MOCK_LLM=1` | Real agent loop with canned LLM responses — needs executor but not an LLM API key |
 | `SKIP_DB=1` | Skips Postgres — useful if the DB container is not running |
 
 ---
@@ -208,7 +207,7 @@ Before going to production, set the following in `.env`:
 
 ```
 VOODO_PROD=1
-OPENROUTER_API_KEY=<your key>
+LLM_API_KEY=<your key>
 EXECUTOR_TOKEN=<16+ character random token>
 IT_USERNAME=<non-default value>
 IT_PASSWORD=<non-default value>
