@@ -702,13 +702,8 @@ def run_agent(
             break
 
         if call.name not in ("screenshot", "wait"):
-            # Settle: give the OS time to actually paint the action's result
-            # before we grab a new frame. Per-action delays in _POST_ACTION_DELAY.
-            delay = _POST_ACTION_DELAY.get(call.name, 0.4)
-            if delay > 0:
-                emit(AgentEvent(kind="status",
-                                payload={"msg": f"waiting {delay:.1f}s for screen to settle…"}))
-                time.sleep(delay)
+            # We rely on the executor (dispatch) to block until the move is physically finished.
+            # No artificial OS settling delay is applied.
             try:
                 fresh = computer.screenshot()
                 shot_result = {"ok": True, "result": fresh}
