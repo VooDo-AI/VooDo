@@ -23,21 +23,21 @@ from typing import Any, Callable
 # to render; without this the model reasons over a stale frame and
 # concludes "nothing happened, retry".
 _POST_ACTION_DELAY: dict[str, float] = {
-    "open_app":          4.0,
-    "close_app":         0.7,
-    "double_click":      1.5,   # often launches things
-    "click":             0.5,
-    "right_click":       0.4,
-    "type":              0.2,
-    "key":               0.2,
-    "hotkey":            0.5,
-    "scroll":            0.3,
-    "set_volume":        0.4,
-    "toggle_network":    2.0,
-    "change_display_brightness": 0.3,
-    "focus_window":      0.5,
-    "minimize_all_windows": 0.4,
-    "highlight_at":      0.0,   # purely visual, no settling needed
+    "open_app":          1.5,
+    "close_app":         0.5,
+    "double_click":      0.5,
+    "click":             0.25,
+    "right_click":       0.25,
+    "type":              0.1,
+    "key":               0.1,
+    "hotkey":            0.3,
+    "scroll":            0.2,
+    "set_volume":        0.0,
+    "toggle_network":    0.5,
+    "change_display_brightness": 0.0,
+    "focus_window":      0.25,
+    "minimize_all_windows": 0.25,
+    "highlight_at":      0.0,
 }
 
 from shared.config import settings
@@ -110,7 +110,7 @@ def run_agent(
     # Reset per-session limits (type-char cap, destructive-action cap).
     reset_session_limits()
 
-    emit(AgentEvent(kind="status", payload={"msg": "Starting up"}))
+    emit(AgentEvent(kind="status", payload={"msg": "Thinking..."}))
 
     # 0. Preflight: executor connected. The LLM provider (OpenRouter) is
     # hit lazily on first chat call — no upfront probe.
@@ -155,9 +155,7 @@ def run_agent(
             emit(AgentEvent(kind="status", payload={"msg": f"DB lookup skipped: {e}"}))
 
     # 2. Initial screenshot + system + user.
-    emit(AgentEvent(kind="status", payload={"msg": "Capturing your screen…"}))
     shot = computer.screenshot()
-    emit(AgentEvent(kind="status", payload={"msg": "Thinking…"}))
     # `screen` is what the MODEL sees (post-resize). `display` is the actual
     # physical display. Click coords from the model are in screen-space and
     # must be scaled to display-space before dispatching to the executor.
@@ -302,6 +300,7 @@ def run_agent(
                 emit(AgentEvent(kind="thought", payload={"text": "", "stream": True}))
             emit(AgentEvent(kind="thought_delta", payload={"text": s}))
 
+        emit(AgentEvent(kind="status", payload={"msg": "Thinking..."}))
         thought, calls = llm.chat(
             messages, TOOL_SCHEMAS, screen=screen, on_thought_delta=_on_delta,
             interrupt_event=interrupt_event,
@@ -695,6 +694,7 @@ def run_agent(
                     kind="result",
                     payload={"success": final_success, "summary": final_summary},
                 ))
+                should_break_outer = True
                 break
 
             emit(AgentEvent(kind="observation", payload=result))
@@ -706,8 +706,10 @@ def run_agent(
             break
 
         if call.name not in ("screenshot", "wait"):
-            # We rely on the executor (dispatch) to block until the move is physically finished.
-            # No artificial OS settling delay is applied.
+            delay = _POST_ACTION_DELAY.get(call.name, 0.1)
+            if delay > 0:
+                emit(AgentEvent(kind="status", payload={"msg": f"waiting {delay:.2f}s for UI to settle..."}))
+                time.sleep(delay)
             try:
                 fresh = computer.screenshot()
                 shot_result = {"ok": True, "result": fresh}
