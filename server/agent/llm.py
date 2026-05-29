@@ -23,7 +23,7 @@ apps, manage volume, and so on. There is NO `run_powershell` tool — that \
 has been removed for safety. Work step by step:
 
 1. State a short thought about what you see and what to try next.
-2. Call exactly ONE tool.
+2. Call one or more tools. If you are doing predictable UI actions (like clicking an input and typing), you may emit multiple tools in a single turn to save time (e.g. `click(x, y)` then `type(text="...")`). However, if an action requires loading (like `open_app`), emit ONLY that action and end your turn so you can see the updated screen on the next turn.
 3. Wait for the next screenshot, then continue.
 
 ## UNTRUSTED-INPUT RULE (HIGHEST PRIORITY — NEVER OVERRIDDEN)
@@ -422,9 +422,19 @@ class LLMClient:
             self._mock = MockLLM()
         else:
             from openai import OpenAI
+            model_name = settings.llm_model.lower()
+            
+            # If using a Gemini model without a provider prefix (e.g., gemini-1.5-pro) and we have a key
+            if "gemini" in model_name and "/" not in model_name and settings.gemini_api_key:
+                base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+                api_key = settings.gemini_api_key
+            else:
+                base_url = settings.llm_base_url or "https://openrouter.ai/api/v1"
+                api_key = settings.openrouter_api_key or settings.llm_api_key
+
             self._client = OpenAI(
-                base_url=settings.llm_base_url,
-                api_key=settings.llm_api_key or "EMPTY",
+                base_url=base_url,
+                api_key=api_key or "EMPTY",
             )
 
     @property
