@@ -154,31 +154,60 @@ class ChatBubble(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 3, 6, 3)
 
-        lbl = QLabel()
-        lbl.setWordWrap(True)
-        lbl.setMaximumWidth(300)
-        lbl.setTextFormat(Qt.RichText)
-        safe = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
-        lbl.setText(safe)
-        self.lbl = lbl  # exposed so callers can stream updates into the bubble
+        self.lbl = QLabel()
+        self.lbl.setWordWrap(True)
+        self.lbl.setMaximumWidth(300)
+        self.lbl.setTextFormat(Qt.RichText)
+        
+        self.full_text = ""
+        self.is_expanded = False
+        self.role = role
 
         if role == "You":
-            lbl.setStyleSheet("""
+            self.lbl.setStyleSheet("""
                 QLabel { background-color:#2563eb; color:white;
                           border-radius:16px; padding:10px 14px;
                           font-size:13px; font-family:'Segoe UI'; }
             """)
             layout.addStretch()
-            layout.addWidget(lbl)
+            layout.addWidget(self.lbl)
         else:
             color = "#ef4444" if role == "System" else "#374151"
-            lbl.setStyleSheet(f"""
+            self.lbl.setStyleSheet(f"""
                 QLabel {{ background-color:#f0f2f5; color:{color};
                            border-radius:16px; padding:10px 14px;
                            font-size:13px; font-family:'Segoe UI'; }}
             """)
-            layout.addWidget(lbl)
+            layout.addWidget(self.lbl)
             layout.addStretch()
+
+        self.eff = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(self.eff)
+        self.anim = QPropertyAnimation(self.eff, b"opacity")
+        self.anim.setDuration(300)
+        self.anim.setStartValue(0.0)
+        self.anim.setEndValue(1.0)
+        self.anim.start()
+        
+        self.update_text(text)
+
+    def update_text(self, text):
+        self.full_text = text
+        if len(text) > 120 and not self.is_expanded and self.role != "You":
+            truncated = text[:117]
+            safe = truncated.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
+            safe += '... <a href="#expand" style="color:#0088bb; text-decoration:none;">(more)</a>'
+            try: self.lbl.linkActivated.disconnect()
+            except TypeError: pass
+            self.lbl.linkActivated.connect(self._expand)
+        else:
+            safe = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
+            
+        self.lbl.setText(safe)
+
+    def _expand(self, link):
+        self.is_expanded = True
+        self.update_text(self.full_text)
 
 
 class ExpandingTextEdit(QTextEdit):
@@ -224,6 +253,9 @@ class VoodoAssistant(QWidget):
         self._eye_ry_right: float = 5.8
         self._eye_glow: float = 1.0
         self._glow_phase: float = 0.0  # 0..1, advances each tick
+        self._type_queue = ""
+        self._type_timer = QTimer(self)
+        self._type_timer.timeout.connect(self._tick_type)
 
         self.signals = WorkerSignals()
         # Connection state belongs in a tooltip-style transient, not as the
@@ -536,9 +568,6 @@ class VoodoAssistant(QWidget):
         self._hist_anim.start()
 
     def _add_bubble(self, role, text):
-        # Remove trailing stretch, add bubble, re-add stretch.
-        # Returns the inner QLabel so callers can mutate it (used for streaming
-        # thought_delta into a bubble that was added empty).
         n = self.bubbles_l.count()
         if n > 0 and self.bubbles_l.itemAt(n-1).spacerItem():
             self.bubbles_l.removeItem(self.bubbles_l.itemAt(n-1))
@@ -547,7 +576,7 @@ class VoodoAssistant(QWidget):
         self.bubbles_l.addStretch()
         QTimer.singleShot(60, lambda: self.scroll.verticalScrollBar().setValue(
             self.scroll.verticalScrollBar().maximum()))
-        return bubble.lbl
+        return bubble
 
     # ── Status ────────────────────────────────────────────────────────────────
 
@@ -598,6 +627,25 @@ class VoodoAssistant(QWidget):
 
     # ── Eye blink (per-eye, staggered) ────────────────────────────────────────
 
+    def _tick_type(self):
+        if not self._type_queue or not self._streaming_label:
+            self._type_timer.stop()
+            return
+        
+        chunk_size = max(1, len(self._type_queue) // 5)
+        chars = self._type_queue[:chunk_size]
+        self._type_queue = self._type_queue[chunk_size:]
+        
+        self._streaming_thought += chars
+        self._streaming_label.update_text(f"🤔 {self._streaming_thought}")
+        
+        tail = self._streaming_thought.replace("\n", " ").strip()
+        tail = tail.rsplit(". ", 1)[-1]
+        if len(tail) > 140:
+            tail = "..." + tail[-137:]
+        if tail:
+            self._set_status(tail)
+
     def _schedule_blink(self):
         delay = int(random.uniform(2500, 5000))
         QTimer.singleShot(delay, self._do_blink)
@@ -622,12 +670,12 @@ class VoodoAssistant(QWidget):
         keeps it subliminal, matching the web UI's robotFloat keyframe."""
         from PyQt5.QtCore import QPoint
         self._float_anim = QPropertyAnimation(self.robot_lbl, b"pos")
-        self._float_anim.setDuration(4000)
+        self._float_anim.setDuration(1500)
         self._float_anim.setLoopCount(-1)
         self._float_anim.setEasingCurve(QEasingCurve.InOutSine)
-        self._float_anim.setKeyValueAt(0.0, QPoint(0, 30))
-        self._float_anim.setKeyValueAt(0.5, QPoint(0, 28))
-        self._float_anim.setKeyValueAt(1.0, QPoint(0, 30))
+        self._float_anim.setKeyValueAt(0.0, QPoint(0, 32))
+        self._float_anim.setKeyValueAt(0.5, QPoint(0, 26))
+        self._float_anim.setKeyValueAt(1.0, QPoint(0, 32))
         self._float_anim.start()
 
     # ── Eye glow pulse (continuous) ───────────────────────────────────────────
