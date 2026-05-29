@@ -43,7 +43,9 @@ services:
     environment:
       # LLM provider — OpenRouter (OpenAI-compatible hosted gateway).
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in .env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-qwen/qwen3-vl-235b-a22b-thinking}
       DATABASE_URL: postgresql://${POSTGRES_USER:-voodo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-voodo}
       EXECUTOR_TOKEN: ${EXECUTOR_TOKEN:?set EXECUTOR_TOKEN in .env}
