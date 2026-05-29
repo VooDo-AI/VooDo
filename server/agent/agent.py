@@ -123,10 +123,10 @@ def run_agent(
         )
         emit(AgentEvent(kind="error", payload={"msg": msg}))
         return SolutionRecord(problem_summary=message.text[:500], success=False)
-    if not mock_llm and not settings.llm_api_key.strip():
+    if not mock_llm and not (settings.llm_api_key.strip() or settings.openrouter_api_key.strip() or settings.gemini_api_key.strip()):
         msg = (
-            "LLM_API_KEY is not set. Add it to your .env "
-            "and restart the backend, or run with MOCK_LLM=1 to skip the real LLM."
+            "No API key is set (LLM_API_KEY, OPENROUTER_API_KEY, or GEMINI_API_KEY). "
+            "Add one to your .env and restart the backend, or run with MOCK_LLM=1."
         )
         emit(AgentEvent(kind="error", payload={"msg": msg}))
         return SolutionRecord(problem_summary=message.text[:500], success=False)

@@ -31,6 +31,8 @@ class Settings:
     llm_base_url: str | None = os.getenv("LLM_BASE_URL")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o")
     llm_api_key: str = os.getenv("LLM_API_KEY", "")
+    openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
 
     # Postgres + pgvector
     database_url: str = os.getenv(
