@@ -524,7 +524,11 @@ def run_agent(
                     f"{call.name}({args_brief}) -> ERROR: {str(_disp_err)[:240]}"
                 )
             else:
-                action_log.append(f"{call.name}({args_brief})")
+                _res_val = result.get("result") if isinstance(result, dict) else None
+                if _res_val is not None and str(_res_val).strip() != "":
+                    action_log.append(f"{call.name}({args_brief}) -> {str(_res_val)[:240]}")
+                else:
+                    action_log.append(f"{call.name}({args_brief})")
 
             # Generic anti-loop guard. If the model has called the same
             # tool 3 turns in a row, push back hard — the screen didn't
