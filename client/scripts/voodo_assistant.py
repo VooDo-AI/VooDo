@@ -618,16 +618,15 @@ class VoodoAssistant(QWidget):
     # ── Float bob (subtle Y-axis) ─────────────────────────────────────────────
 
     def _start_float_anim(self):
-        """4s sinusoidal Y bob between (0, 28) and (0, 32). 2px amplitude
-        keeps it subliminal, matching the web UI's robotFloat keyframe."""
+        """2s sinusoidal Y bob between (0, 26) and (0, 32)."""
         from PyQt5.QtCore import QPoint
         self._float_anim = QPropertyAnimation(self.robot_lbl, b"pos")
-        self._float_anim.setDuration(4000)
+        self._float_anim.setDuration(2000)
         self._float_anim.setLoopCount(-1)
         self._float_anim.setEasingCurve(QEasingCurve.InOutSine)
-        self._float_anim.setKeyValueAt(0.0, QPoint(0, 30))
-        self._float_anim.setKeyValueAt(0.5, QPoint(0, 28))
-        self._float_anim.setKeyValueAt(1.0, QPoint(0, 30))
+        self._float_anim.setKeyValueAt(0.0, QPoint(0, 32))
+        self._float_anim.setKeyValueAt(0.5, QPoint(0, 26))
+        self._float_anim.setKeyValueAt(1.0, QPoint(0, 32))
         self._float_anim.start()
 
     # ── Eye glow pulse (continuous) ───────────────────────────────────────────
