@@ -707,7 +707,6 @@ def run_agent(
         if call.name not in ("screenshot", "wait"):
             delay = _POST_ACTION_DELAY.get(call.name, 0.1)
             if delay > 0:
-                emit(AgentEvent(kind="status", payload={"msg": f"waiting {delay:.2f}s for UI to settle..."}))
                 time.sleep(delay)
             try:
                 fresh = computer.screenshot()

@@ -218,6 +218,7 @@ const INTRO_HTML = `
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws`);
+  window.ws = ws;
   ws.onopen  = () => setStatus("connected", "connected");
   ws.onclose = () => { setStatus("reconnecting…", "disconnected"); setTimeout(connect, 1500); };
   ws.onerror = () => setStatus("error", "disconnected");
@@ -405,6 +406,20 @@ function renderEvent(event) {
       el("status", payload.msg || JSON.stringify(payload));
       saveMsg(activeId, { kind: "agent", text: payload.msg || JSON.stringify(payload) });
       if (payload.permission === "keyboard") showPermissionPopup(payload.tool || "keyboard/mouse");
+      break;
+    case "mode_change":
+      // Update local mode selection without triggering another WebSocket send
+      const dropdown = document.getElementById("model-dropdown");
+      const selectedLabel = document.getElementById("model-selected");
+      if (dropdown && selectedLabel && payload.mode) {
+        const opt = dropdown.querySelector(`[data-value="${payload.mode}"]`);
+        if (opt) {
+          dropdown.querySelectorAll('.model-option').forEach(o => o.classList.remove('active'));
+          opt.classList.add('active');
+          selectedLabel.textContent = opt.textContent;
+          localStorage.setItem('voodo-mode', opt.dataset.value);
+        }
+      }
       break;
     default:
       el("thought", `[${kind}] ${JSON.stringify(payload)}`);

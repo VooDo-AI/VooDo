@@ -297,6 +297,10 @@ async def ws_chat(ws: WebSocket) -> None:
                 if isinstance(iev, threading.Event):
                     iev.clear()
                 continue
+            if t == "set_mode":
+                # Broadcast mode change to all connected clients
+                await _broadcast(AgentEvent(kind="mode_change", payload={"mode": data.get("mode")}))
+                continue
             if t == "approve_keyboard":
                 # User granted keyboard/mouse access from the permission popup.
                 # Mark approved and resume the paused agent in one step.
