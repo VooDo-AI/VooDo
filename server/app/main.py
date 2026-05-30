@@ -29,37 +29,32 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _DONE = object()  # sentinel pushed onto the queue when the agent run finishes
 
-# Module-level subscriber set: every connected /ws receives agent events
-# from every running session, not just the one it started. Lets the
-# floating widget mirror what's happening regardless of whether the
-# session was kicked off from the browser chat or the widget itself.
-_subscribers: set[WebSocket] = set()
-# Subset of _subscribers that identified themselves as the floating
-# widget (via {"type":"hello","client":"widget"}). Used to:
-#   • Skip the "open_assistant" call when a widget is already up.
-#   • Auto-pause the in-flight run when the last widget WS drops.
-_widget_subscribers: set[WebSocket] = set()
-# A single in-flight session per backend instance. The events on this
-# state (cancel / interrupt) are shared with the worker thread so any
-# /ws subscriber can stop or pause the run.
-_session: dict[str, threading.Event | None] = {"cancel": None, "interrupt": None, "keyboard_approved": None}
+import collections
+
+class ClientState:
+    def __init__(self):
+        self.subscribers: set[WebSocket] = set()
+        self.widget_subscribers: set[WebSocket] = set()
+        self.session: dict[str, threading.Event | None] = {"cancel": None, "interrupt": None, "keyboard_approved": None}
+        self.current_task: asyncio.Task | None = None
+
+_clients: dict[str, ClientState] = collections.defaultdict(ClientState)
 
 
-async def _broadcast(event: AgentEvent) -> None:
-    """Fan an AgentEvent out to every connected /ws. Drops sockets that
-    fail to receive (they'll get cleaned up on the next receive loop
-    error anyway)."""
-    if not _subscribers:
+async def _broadcast(client_id: str, event: AgentEvent) -> None:
+    """Fan an AgentEvent out to every connected /ws for this client."""
+    state = _clients[client_id]
+    if not state.subscribers:
         return
     payload = event.model_dump()
     dead: list[WebSocket] = []
-    for ws in _subscribers:
+    for ws in state.subscribers:
         try:
             await ws.send_json(payload)
         except Exception:  # noqa: BLE001 — best-effort fan-out
             dead.append(ws)
     for ws in dead:
-        _subscribers.discard(ws)
+        state.subscribers.discard(ws)
 
 
 @app.get("/")
@@ -68,8 +63,8 @@ async def index() -> FileResponse:
 
 
 @app.get("/health")
-async def health() -> dict[str, bool | str]:
-    return {"ok": True, "executor_connected": bridge.connected}
+async def health() -> dict[str, bool | int]:
+    return {"ok": True, "connected_clients": len(bridge._clients)}
 
 
 security = HTTPBasic()
@@ -231,14 +226,12 @@ async def ws_executor(ws: WebSocket) -> None:
     if not hmac.compare_digest(got, expected):
         await ws.close(code=4401)
         return
+    client_id = ws.query_params.get("client_id", "default")
     await ws.accept()
     try:
-        await bridge.serve(ws, asyncio.get_running_loop())
+        await bridge.serve(ws, asyncio.get_running_loop(), client_id)
     except WebSocketDisconnect:
         return
-
-
-_current_task: asyncio.Task | None = None
 
 
 @app.websocket("/ws")
@@ -254,9 +247,11 @@ async def ws_chat(ws: WebSocket) -> None:
     /ws receives the event stream via _broadcast(). That way the
     floating widget mirrors browser-initiated runs (and vice versa).
     """
-    global _current_task
+    client_id = ws.query_params.get("client_id", "default")
+    state = _clients[client_id]
+
     await ws.accept()
-    _subscribers.add(ws)
+    state.subscribers.add(ws)
     # Dev shortcuts (MOCK_AGENT / MOCK_LLM / SKIP_DB) are IGNORED in
     # VOODO_PROD=1 mode so a stray env var can't downgrade the deploy.
     if settings.prod_mode:
@@ -271,46 +266,42 @@ async def ws_chat(ws: WebSocket) -> None:
     try:
         while True:
             data = await ws.receive_json()
-            t = data.get("type")
-            if t == "hello":
-                # Client identification — currently the floating widget
-                # uses this to register so we can auto-pause when it
-                # closes. Browser clients don't send hello.
-                if data.get("client") == "widget":
-                    _widget_subscribers.add(ws)
+            msg_type = data.get("type")
+            if msg_type == "hello" and data.get("client") == "widget":
+                state.widget_subscribers.add(ws)
                 continue
-            if t == "stop":
-                ev = _session.get("cancel")
+            if msg_type == "stop":
+                ev = state.session.get("cancel")
                 if isinstance(ev, threading.Event):
                     ev.set()
-                iev = _session.get("interrupt")
+                iev = state.session.get("interrupt")
                 if isinstance(iev, threading.Event):
                     iev.clear()
                 continue
-            if t == "pause":
-                iev = _session.get("interrupt")
+            if msg_type == "pause":
+                iev = state.session.get("interrupt")
                 if isinstance(iev, threading.Event):
                     iev.set()
                 continue
-            if t == "resume":
-                iev = _session.get("interrupt")
+            if msg_type == "resume":
+                iev = state.session.get("interrupt")
                 if isinstance(iev, threading.Event):
                     iev.clear()
                 continue
-            if t == "approve_keyboard":
+            if msg_type == "approve_keyboard":
                 # User granted keyboard/mouse access from the permission popup.
                 # Mark approved and resume the paused agent in one step.
-                kb_ev = _session.get("keyboard_approved")
+                kb_ev = state.session.get("keyboard_approved")
                 if isinstance(kb_ev, threading.Event):
                     kb_ev.set()
-                iev = _session.get("interrupt")
+                iev = state.session.get("interrupt")
                 if isinstance(iev, threading.Event):
                     iev.clear()
                 continue
-            if t == "feedback":
+            if msg_type == "feedback":
                 # End-of-run 👍/👎 from the user. Persist to DB; no
                 # round-trip status event back to the client (the UI
-                # already shows the local "Thanks!" confirmation).
+                # already shows the local "Thanks!")
                 rating = str(data.get("rating", "")).lower()
                 if rating in ("like", "dislike"):
                     try:
@@ -319,12 +310,12 @@ async def ws_chat(ws: WebSocket) -> None:
                             rating=rating,
                             success=data.get("success"),
                             summary=data.get("summary"),
-                            source=("widget" if ws in _widget_subscribers else "browser"),
+                            source=("widget" if ws in state.widget_subscribers else "browser"),
                         )
                     except Exception as e:  # noqa: BLE001
                         print(f"[ws] feedback save failed: {e}", flush=True)
                 continue
-            if t != "message":
+            if msg_type != "message":
                 continue
             text = data.get("text", "").strip()
             if not text:
@@ -337,57 +328,60 @@ async def ws_chat(ws: WebSocket) -> None:
             mode = data.get("mode", "control")
             if mode not in ("control", "guide"):
                 mode = "control"
-            # A previous run is still alive. Two sub-cases:
-            #   • Paused (interrupt_event set) — the user almost certainly
-            #     abandoned the prior permission gate; treat the new
+            # 2) Guard concurrent runs.
+            #     Not running - start a new task.
+            #     Done        - garbage collect the old task, start a new one.
+            #                 (No await needed; we just let asyncio clean it up)
+            #     Paused      - resume the paused task, DO NOT start a new one, treat the
             #     message as an implicit stop+start.
-            #   • Actively running — refuse with a visible error so the
+            #     Actively running - refuse with a visible error so the
             #     user knows to wait or hit Stop.
-            if _current_task is not None and not _current_task.done():
-                _iev = _session.get("interrupt")
+            if state.current_task is not None and not state.current_task.done():
+                _iev = state.session.get("interrupt")
                 _paused = isinstance(_iev, threading.Event) and _iev.is_set()
                 if _paused:
-                    # Implicit cancel of the stuck-paused task.
-                    _cev = _session.get("cancel")
+                    # Cancel the paused task implicitly.
+                    _cev = state.session.get("cancel")
                     if isinstance(_cev, threading.Event):
                         _cev.set()
                     if isinstance(_iev, threading.Event):
                         _iev.clear()  # let _wait_for_resume return
                     try:
-                        await asyncio.wait_for(_current_task, timeout=2.0)
+                        await asyncio.wait_for(state.current_task, timeout=2.0)
                     except (asyncio.TimeoutError, Exception):  # noqa: BLE001
                         pass
-                    _current_task = None
+                    state.current_task = None
                     # fall through to start the new run
                 else:
-                    await _broadcast(AgentEvent(kind="error", payload={
+                    await _broadcast(client_id, AgentEvent(kind="error", payload={
                         "msg": (
                             "A task is already running. Click the red Stop "
                             "button next to the input to cancel it, then "
-                            "resend."
-                        ),
+                            "try again."
+                        )
                     }))
                     continue
-            # Browser-initiated chat → minimize the voo.do tab and pop
-            # the floating widget on the executor host. Fire-and-forget
-            # so the chat itself isn't blocked if the executor is slow.
-            # Skipped when the message came from the widget itself (it
-            # already has focus) or when no executor is connected.
-            if ws not in _widget_subscribers and bridge.connected:
-                asyncio.create_task(_open_assistant_safe())
+
+            # Browser-initiated chat -> minimize the voo.do tab and pop
+            # the floating widget on the executor host.
+            if ws not in state.widget_subscribers and bridge.is_connected(client_id):
+                asyncio.create_task(_open_assistant_safe(client_id))
+
+            # 3) Setup a fresh session.
             cancel_event = threading.Event()
             interrupt_event = threading.Event()
             keyboard_approved_event = threading.Event()
-            _session["cancel"] = cancel_event
-            _session["interrupt"] = interrupt_event
-            _session["keyboard_approved"] = keyboard_approved_event
+            state.session["cancel"] = cancel_event
+            state.session["interrupt"] = interrupt_event
+            state.session["keyboard_approved"] = keyboard_approved_event
+
             # Echo the user's prompt to every subscriber so widgets that
             # didn't originate the message still show "You: <prompt>".
-            await _broadcast(AgentEvent(
+            await _broadcast(client_id, AgentEvent(
                 kind="status",
                 payload={"msg": f"user: {text[:140]}", "user_prompt": text},
             ))
-            _current_task = asyncio.create_task(_run_one_message(
+            state.current_task = asyncio.create_task(_run_one_message(
                 UserMessage(text=text),
                 use_mock_agent=use_mock_agent,
                 mock_llm=mock_llm,
@@ -396,6 +390,8 @@ async def ws_chat(ws: WebSocket) -> None:
                 interrupt_event=interrupt_event,
                 keyboard_approved_event=keyboard_approved_event,
                 mode=mode,
+                ws=ws,
+                client_id=client_id,
             ))
     except WebSocketDisconnect:
         # This subscriber went away; don't cancel the session — other
@@ -408,24 +404,24 @@ async def ws_chat(ws: WebSocket) -> None:
         raise
 
 
-def _on_subscriber_drop(ws: WebSocket) -> None:
-    """Remove a /ws subscriber. If the dropped socket was the floating
-    widget, auto-pause the in-flight run — closing the widget is the
-    user's "wait, I want to think about this" signal."""
-    _subscribers.discard(ws)
-    was_widget = ws in _widget_subscribers
-    _widget_subscribers.discard(ws)
-    if was_widget and not _widget_subscribers:
-        iev = _session.get("interrupt")
-        if isinstance(iev, threading.Event):
-            iev.set()
+    def _on_subscriber_drop(ws: WebSocket) -> None:
+        """Remove a /ws subscriber. If the dropped socket was the floating
+        widget, auto-pause the in-flight run - closing the widget is the
+        user's "wait, I want to think about this" signal."""
+        state.subscribers.discard(ws)
+        was_widget = ws in state.widget_subscribers
+        state.widget_subscribers.discard(ws)
+        if was_widget and not state.widget_subscribers:
+            iev = state.session.get("interrupt")
+            if isinstance(iev, threading.Event):
+                iev.set()
 
 
-async def _open_assistant_safe() -> None:
+async def _open_assistant_safe(client_id: str) -> None:
     """Fire `open_assistant` on the executor side. Best-effort; swallows
     errors so a flaky executor never breaks the chat."""
     try:
-        await bridge._call_async("open_assistant", {}, timeout=8.0)
+        await bridge._call_async(client_id, "open_assistant", {}, timeout=8.0)
     except Exception:  # noqa: BLE001
         pass
 
@@ -440,6 +436,8 @@ async def _run_one_message(
     interrupt_event: threading.Event | None = None,
     keyboard_approved_event: threading.Event | None = None,
     mode: str = "control",
+    ws: WebSocket,
+    client_id: str = "default",
 ) -> None:
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue = asyncio.Queue()
@@ -462,6 +460,7 @@ async def _run_one_message(
                     interrupt_event=interrupt_event,
                     keyboard_approved_event=keyboard_approved_event,
                     mode=mode,
+                    client_id=client_id,
                 )
         except Exception as e:  # noqa: BLE001
             emit(AgentEvent(kind="error", payload={"msg": f"{type(e).__name__}: {e}"}))
@@ -474,11 +473,13 @@ async def _run_one_message(
             item = await queue.get()
             if item is _DONE:
                 break
-            await _broadcast(item)
+            await _broadcast(client_id, item)
     finally:
         await worker_task
         # Release session state so the next prompt from any subscriber
         # can start a fresh run.
-        _session["cancel"] = None
-        _session["interrupt"] = None
-        _session["keyboard_approved"] = None
+        # Note: _run_one_message is top-level, so we must access state via _clients[client_id]
+        state = _clients[client_id]
+        state.session["cancel"] = None
+        state.session["interrupt"] = None
+        state.session["keyboard_approved"] = None

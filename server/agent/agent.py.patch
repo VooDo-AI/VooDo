@@ -1,0 +1,24 @@
+--- server/agent/agent.py
++++ server/agent/agent.py
+@@ -153,6 +153,19 @@
+                     )
+         except Exception as e:  # noqa: BLE001 - DB is best-effort
+             emit(AgentEvent(kind="status", payload={"msg": f"DB lookup skipped: {e}"}))
++
++    # Auto-Inject hardcoded instructions
++    try:
++        from server.db.client import get_app_instructions
++        all_instructions = get_app_instructions(mode)
++        matched_instructions = []
++        lower_msg = message.text.lower()
++        for topic, inst in all_instructions.items():
++            if topic in lower_msg:
++                matched_instructions.append(f"[{topic.upper()} SYSTEM CONTEXT: {inst}]")
++        if matched_instructions:
++            message = UserMessage(
++                text=f"{message.text}\n\n" + "\n".join(matched_instructions),
++                attachments=message.attachments,
++            )
++    except Exception as e:
++        emit(AgentEvent(kind="status", payload={"msg": f"Instruction lookup skipped: {e}"}))
+ 
