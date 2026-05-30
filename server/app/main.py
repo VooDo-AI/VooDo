@@ -288,11 +288,10 @@ async def ws_chat(ws: WebSocket) -> None:
                 if isinstance(iev, threading.Event):
                     iev.clear()
                 continue
-            if t == "set_mode":
+            if msg_type == "set_mode":
                 # Broadcast mode change to all connected clients
-                await _broadcast(AgentEvent(kind="mode_change", payload={"mode": data.get("mode")}))
+                await _broadcast(client_id, AgentEvent(kind="mode_change", payload={"mode": data.get("mode")}))
                 continue
-            if t == "approve_keyboard":
             if msg_type == "approve_keyboard":
                 # User granted keyboard/mouse access from the permission popup.
                 # Mark approved and resume the paused agent in one step.
@@ -402,14 +401,14 @@ async def ws_chat(ws: WebSocket) -> None:
         # This subscriber went away; don't cancel the session — other
         # subscribers may still be watching. Cancel only happens when
         # someone explicitly sends {"type":"stop"}.
-        _on_subscriber_drop(ws)
+        _on_subscriber_drop(ws, state)
         return
     except Exception:  # noqa: BLE001
-        _on_subscriber_drop(ws)
+        _on_subscriber_drop(ws, state)
         raise
 
 
-def _on_subscriber_drop(ws: WebSocket) -> None:
+def _on_subscriber_drop(ws: WebSocket, state: ClientState) -> None:
     """Remove a /ws subscriber.
 
     • If the dropped socket was the floating widget and no other widget
@@ -419,38 +418,27 @@ def _on_subscriber_drop(ws: WebSocket) -> None:
       cancel the in-flight run — nobody is watching, so there's no point
       in continuing (and it could be dangerous to keep clicking unseen).
     """
-    _subscribers.discard(ws)
-    was_widget = ws in _widget_subscribers
-    _widget_subscribers.discard(ws)
+    state.subscribers.discard(ws)
+    was_widget = ws in state.widget_subscribers
+    state.widget_subscribers.discard(ws)
 
     # No subscribers left at all → hard cancel.
-    if not _subscribers:
-        cev = _session.get("cancel")
+    if not state.subscribers:
+        cev = state.session.get("cancel")
         if isinstance(cev, threading.Event):
             cev.set()
         # Also clear the interrupt so the agent loop can exit cleanly
         # instead of staying stuck on the pause gate.
-        iev = _session.get("interrupt")
+        iev = state.session.get("interrupt")
         if isinstance(iev, threading.Event):
             iev.clear()
         return
 
     # Widget dropped but browser(s) still connected → just pause.
-    if was_widget and not _widget_subscribers:
-        iev = _session.get("interrupt")
+    if was_widget and not state.widget_subscribers:
+        iev = state.session.get("interrupt")
         if isinstance(iev, threading.Event):
             iev.set()
-    def _on_subscriber_drop(ws: WebSocket) -> None:
-        """Remove a /ws subscriber. If the dropped socket was the floating
-        widget, auto-pause the in-flight run - closing the widget is the
-        user's "wait, I want to think about this" signal."""
-        state.subscribers.discard(ws)
-        was_widget = ws in state.widget_subscribers
-        state.widget_subscribers.discard(ws)
-        if was_widget and not state.widget_subscribers:
-            iev = state.session.get("interrupt")
-            if isinstance(iev, threading.Event):
-                iev.set()
 
 
 async def _open_assistant_safe(client_id: str) -> None:
