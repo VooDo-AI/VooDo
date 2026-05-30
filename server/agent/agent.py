@@ -94,9 +94,11 @@ def run_agent(
     interrupt_event: threading.Event | None = None,
     keyboard_approved_event: threading.Event | None = None,
     mode: str = "control",
+    client_id: str = "default",
 ) -> SolutionRecord:
     """Run the loop to completion. Returns the SolutionRecord that was (or would be) saved."""
-    from server.agent import computer
+    from server.agent.computer import ClientComputer
+    computer = ClientComputer(client_id)
     from server.agent.llm import LLMClient, build_user_message
     from server.agent.tools import TOOL_SCHEMAS, dispatch, reset_session_limits
 
@@ -153,6 +155,24 @@ def run_agent(
                     )
         except Exception as e:  # noqa: BLE001 — DB is best-effort
             emit(AgentEvent(kind="status", payload={"msg": f"DB lookup skipped: {e}"}))
+
+    # Auto-Inject hardcoded instructions
+    try:
+        from server.db.client import get_app_instructions
+        all_instructions = get_app_instructions(mode)
+        matched_instructions = []
+        lower_msg = message.text.lower()
+        for topic, inst in all_instructions.items():
+            if topic in lower_msg:
+                matched_instructions.append(f"[{topic.upper()} SYSTEM CONTEXT: {inst}]")
+        if matched_instructions:
+            message = UserMessage(
+                text=f"{message.text}\n\n" + "\n".join(matched_instructions),
+                attachments=message.attachments,
+            )
+            emit(AgentEvent(kind="status", payload={"msg": f"Auto-injected {len(matched_instructions)} instructions"}))
+    except Exception as e:
+        emit(AgentEvent(kind="status", payload={"msg": f"Instruction lookup skipped: {e}"}))
 
     # 2. Initial screenshot + system + user.
     shot = computer.screenshot()
@@ -521,10 +541,15 @@ def run_agent(
             # like open_app the screen doesn't reflect the failure (app
             # didn't launch → desktop still visible → model can't tell)
             # and the model otherwise loops, re-emitting the same call.
+            safe_args = dict(call.args)
+            redact_key = _SENSITIVE_ARG_TOOLS.get(call.name)
+            if redact_key and redact_key in safe_args:
+                safe_args[redact_key] = "<redacted>"
+
             try:
-                args_brief = json.dumps(call.args, default=str)[:120]
+                args_brief = json.dumps(safe_args, default=str)[:120]
             except Exception:  # noqa: BLE001
-                args_brief = str(call.args)[:120]
+                args_brief = str(safe_args)[:120]
             _disp_err = (result.get("error") if isinstance(result, dict) else None)
             if _disp_err:
                 action_log.append(
@@ -698,6 +723,23 @@ def run_agent(
                     continue
                 final_success = bool(call.args.get("success", False))
                 final_summary = str(call.args.get("summary", ""))
+
+                # --- SUPERVISOR CHECK ---
+                if final_success:
+                    emit(AgentEvent(kind="status", payload={"msg": "Supervisor is verifying the result..."}))
+                    from server.agent.supervisor import verify_finish
+                    import re
+                    # Original user goal is stored in message.text, stripped of hints and system contexts.
+                    orig_goal = re.split(r'\n\n\[', message.text)[0].strip()
+                    sv_res = verify_finish(orig_goal, final_summary)
+                    if not sv_res.get("approved", True):
+                        # Supervisor rejected the finish.
+                        emit(AgentEvent(kind="status", payload={"msg": "Supervisor rejected finish, pushing back."}))
+                        action_log.append(f"finish() -> REJECTED by Supervisor: {sv_res.get('feedback', '')}")
+                        continue
+                    else:
+                        # Approved! Use the supervisor's friendly summary.
+                        final_summary = sv_res.get("feedback", final_summary)
                 emit(AgentEvent(
                     kind="result",
                     payload={"success": final_success, "summary": final_summary},
@@ -746,8 +788,11 @@ def run_agent(
     else:
         emit(AgentEvent(kind="error", payload={"msg": "max steps reached"}))
 
+    import re
+    # Strip any injected contexts (like DB hints or app instructions) before saving to DB
+    clean_summary = re.split(r'\n\n\[', message.text)[0].strip()
     record = SolutionRecord(
-        problem_summary=message.text[:500],
+        problem_summary=clean_summary[:500],
         steps=steps,
         success=final_success,
         os="windows",
@@ -769,12 +814,6 @@ def run_agent(
             # never leak into the shared DB for other users to
             # retrieve as a "hint". Same for `write_clipboard.text`.
             from server.agent.tools import _ALLOWED_TOOLS
-            _SENSITIVE_ARG_TOOLS = {
-                "type": "text",
-                "write_clipboard": "text",
-                "focus_window": "window_title",
-                "search_files": "query",
-            }
             safe_steps: list[dict[str, Any]] = []
             for s in record.steps:
                 if s.action.name not in _ALLOWED_TOOLS:

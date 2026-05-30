@@ -1,0 +1,29 @@
+--- server/agent/agent.py
++++ server/agent/agent.py
+@@ -707,8 +707,24 @@
+                     )
+                     continue
+                 final_success = bool(call.args.get("success", False))
+                 final_summary = str(call.args.get("summary", ""))
++
++                # --- SUPERVISOR CHECK ---
++                if final_success:
++                    emit(AgentEvent(kind="status", payload={"msg": "Supervisor is verifying the result..."}))
++                    from server.agent.supervisor import verify_finish
++                    # Original user goal is stored in message.text, stripped of hints.
++                    orig_goal = message.text.split("[hint")[0].split("[SYSTEM")[0].strip()
++                    sv_res = verify_finish(orig_goal, final_summary)
++                    if not sv_res.get("approved", True):
++                        # Supervisor rejected the finish.
++                        emit(AgentEvent(kind="status", payload={"msg": "Supervisor rejected finish, pushing back."}))
++                        action_log.append(f"finish() -> REJECTED by Supervisor: {sv_res.get('feedback', '')}")
++                        continue
++                    else:
++                        # Approved! Use the supervisor's friendly summary.
++                        final_summary = sv_res.get("feedback", final_summary)
++
+                 emit(AgentEvent(
+                     kind="result",
+                     payload={"success": final_success, "summary": final_summary},
+                 ))
+

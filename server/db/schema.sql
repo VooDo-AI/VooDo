@@ -78,3 +78,9 @@ insert into open_app_aliases (alias, canonical) values
     ('vscode',     'code'),
     ('calculator', 'calc')
 on conflict (alias) do nothing;
+
+create table if not exists app_instructions (
+    topic text primary key,
+    control_instruction text,
+    guide_instruction text
+);
