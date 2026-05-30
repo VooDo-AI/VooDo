@@ -315,7 +315,7 @@ def open_app(app_name: str) -> dict[str, Any]:
                     f"open_app: URI scheme '{scheme}:' is not allowed. "
                     f"Allowed: {sorted(_OPEN_APP_ALLOWED_SCHEMES)}"}
             try:
-                _os.startfile(name)
+                _os.startfile(name, show_cmd=3)
                 return {"status": "opened", "method": "uri", "app_name": name}
             except OSError as e:
                 return {"error": f"open_app uri failed: {e}"}
@@ -342,7 +342,7 @@ def open_app(app_name: str) -> dict[str, Any]:
     # target (we can't introspect the resolution, so we rely on the
     # allow-list to ensure the name itself is a real executable name).
     try:
-        _os.startfile(base_noext)
+        _os.startfile(base_noext, show_cmd=3)
         return {"status": "opened", "method": "startfile", "app_name": base_noext}
     except OSError as e:
         errs.append(f"startfile: {e}")
@@ -356,11 +356,23 @@ def open_app(app_name: str) -> dict[str, Any]:
             pg = _pyautogui()
             pg.hotkey("win", "r")
             time.sleep(0.4)
-            pg.typewrite(base_noext, interval=0.02)
+            # Append a colon to trigger URI scheme handlers for UWP apps (e.g. "whatsapp:")
+            # Use pynput to inject Unicode directly, bypassing the active keyboard layout (e.g., Hebrew)
+            text_to_type = base_noext + ":"
+            try:
+                from pynput.keyboard import Controller
+                Controller().type(text_to_type)
+            except ImportError:
+                pg.typewrite(text_to_type, interval=0.02)
             time.sleep(0.15)
             pg.press("enter")
+            
+            # Best-effort maximize for Win+R fallback
+            time.sleep(1.5)
+            pg.hotkey("win", "up")
+            
             return {"status": "opened", "method": "win_r_typed",
-                    "app_name": base_noext}
+                    "app_name": base_noext + ":"}
         except Exception as e:  # noqa: BLE001
             errs.append(f"win_r_typed: {type(e).__name__}: {e}")
 
