@@ -146,6 +146,7 @@ class WorkerSignals(QObject):
     error          = pyqtSignal(str)
     user_prompt    = pyqtSignal(str)         # echo from a peer subscriber
     permission_req = pyqtSignal(str)         # tool name needing kb/mouse approval
+    mode_change    = pyqtSignal(str)
 
 
 class ChatBubble(QWidget):
@@ -166,7 +167,7 @@ class ChatBubble(QWidget):
             lbl.setStyleSheet("""
                 QLabel { background-color:#2563eb; color:white;
                           border-radius:16px; padding:10px 14px;
-                          font-size:13px; font-family:'Segoe UI'; }
+                          font-size:13px; font-family:'Segoe UI'; min-width:32px; min-height:16px; }
             """)
             layout.addStretch()
             layout.addWidget(lbl)
@@ -175,7 +176,7 @@ class ChatBubble(QWidget):
             lbl.setStyleSheet(f"""
                 QLabel {{ background-color:#f0f2f5; color:{color};
                            border-radius:16px; padding:10px 14px;
-                           font-size:13px; font-family:'Segoe UI'; }}
+                           font-size:13px; font-family:'Segoe UI'; min-width:32px; min-height:16px; }}
             """)
             layout.addWidget(lbl)
             layout.addStretch()
@@ -184,12 +185,14 @@ class ChatBubble(QWidget):
 class ExpandingTextEdit(QTextEdit):
     """Enter → send, Shift+Enter → newline. Grows up to 3 lines."""
     submit = pyqtSignal()
-    MIN_H  = 44
+    MIN_H  = 48
     MAX_H  = 90   # ~3 lines
 
     def __init__(self):
         super().__init__()
         self.setFixedHeight(self.MIN_H)
+        from PyQt5.QtCore import Qt
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.document().contentsChanged.connect(self._resize)
 
     def keyPressEvent(self, event):
@@ -240,6 +243,7 @@ class VoodoAssistant(QWidget):
         self.signals.error.connect(self._on_err)
         self.signals.user_prompt.connect(self._on_peer_user_prompt)
         self.signals.permission_req.connect(self._on_permission_request)
+        self.signals.mode_change.connect(self._on_mode_change_signal)
 
         self._build_ui()
         self._load_pos()
@@ -388,7 +392,7 @@ class VoodoAssistant(QWidget):
         self.input.setStyleSheet("""
             QTextEdit {
                 background-color:white; color:#222;
-                border-radius:14px; padding:8px 12px;
+                border-radius:14px; padding:5px 12px;
                 font-size:15px; font-family:'Segoe UI',Arial,sans-serif;
                 border:1.5px solid rgba(255,255,255,0.85);
             }
@@ -618,16 +622,15 @@ class VoodoAssistant(QWidget):
     # ── Float bob (subtle Y-axis) ─────────────────────────────────────────────
 
     def _start_float_anim(self):
-        """4s sinusoidal Y bob between (0, 28) and (0, 32). 2px amplitude
-        keeps it subliminal, matching the web UI's robotFloat keyframe."""
+        """2s sinusoidal Y bob between (0, 26) and (0, 32)."""
         from PyQt5.QtCore import QPoint
         self._float_anim = QPropertyAnimation(self.robot_lbl, b"pos")
-        self._float_anim.setDuration(4000)
+        self._float_anim.setDuration(2000)
         self._float_anim.setLoopCount(-1)
         self._float_anim.setEasingCurve(QEasingCurve.InOutSine)
-        self._float_anim.setKeyValueAt(0.0, QPoint(0, 30))
-        self._float_anim.setKeyValueAt(0.5, QPoint(0, 28))
-        self._float_anim.setKeyValueAt(1.0, QPoint(0, 30))
+        self._float_anim.setKeyValueAt(0.0, QPoint(0, 32))
+        self._float_anim.setKeyValueAt(0.5, QPoint(0, 26))
+        self._float_anim.setKeyValueAt(1.0, QPoint(0, 32))
         self._float_anim.start()
 
     # ── Eye glow pulse (continuous) ───────────────────────────────────────────
@@ -871,6 +874,7 @@ class VoodoAssistant(QWidget):
             "observation":   lambda p: self.signals.observation.emit(p),
             "result":        lambda p: self.signals.result.emit(bool(p.get("success")), p.get("summary", "")),
             "error":         lambda p: self.signals.error.emit(p.get("msg", "")),
+            "mode_change":   lambda p: self.signals.mode_change.emit(p.get("mode", "")),
         }
         fn = sig_map.get(kind)
         if fn: fn(payload)
@@ -961,7 +965,7 @@ class VoodoAssistant(QWidget):
         if stream:
             self._streaming_thought = ""
             # Add an empty bubble that thought_delta will fill in.
-            self._streaming_label = self._add_bubble("Voodo", "💭 ")
+            self._streaming_label = self._add_bubble("Voodo", "💭 Thinking...")
         else:
             self._streaming_label = None
             self._add_bubble("Voodo", f"💭 {text}")
@@ -971,7 +975,7 @@ class VoodoAssistant(QWidget):
         if not self._streaming_label:
             # Late join — create a bubble on the fly so deltas have somewhere
             # to land (happens when the widget connects mid-session).
-            self._streaming_label = self._add_bubble("Voodo", "💭 ")
+            self._streaming_label = self._add_bubble("Voodo", "💭 Thinking...")
         self._streaming_thought += chunk
         safe = self._streaming_thought.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
         self._streaming_label.setText(f"💭 {safe}")
@@ -1077,6 +1081,21 @@ class VoodoAssistant(QWidget):
         self._set_status(f"❌ {msg[:70]}")
         self._add_bubble("System", f"Error: {msg}")
         self._unlock()
+
+    def _on_mode_change_signal(self, new_mode: str):
+        """Handle mode_change events broadcast by the server (e.g. when
+        the browser UI switches mode).  Update the widget to match."""
+        if not new_mode or new_mode == self.mode:
+            return
+        self.mode = new_mode
+        if new_mode == "guide":
+            self.mode_btn.setText("👆")
+            self.mode_btn.setToolTip("Mode: Show Me What to Click\nClick to switch back to Control My Computer")
+            self._set_status("mode: Show Me What to Click")
+        else:
+            self.mode_btn.setText("🤖")
+            self.mode_btn.setToolTip("Mode: Control My Computer (voodo acts)\nClick to switch to Show Me What to Click")
+            self._set_status("mode: Control My Computer")
 
     def _unlock(self):
         self.input.setEnabled(True)
