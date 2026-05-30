@@ -23,8 +23,11 @@ apps, manage volume, and so on. There is NO `run_powershell` tool — that \
 has been removed for safety. Work step by step:
 
 1. State a short thought about what you see and what to try next.
-2. Call exactly ONE tool.
+2. Call one or more tools. If you are doing predictable UI actions (like clicking an input and typing), you may emit multiple tools in a single turn to save time (e.g. `click(x, y)` then `type(text="...")`). However, if an action requires loading (like `open_app`), emit ONLY that action and end your turn so you can see the updated screen on the next turn.
 3. Wait for the next screenshot, then continue.
+
+## STOPPING RULE (CRITICAL)
+As soon as you visually verify that the user's core goal has been achieved, you MUST immediately call `finish(success=True)`. Do NOT perform any "cleanup" actions. Do NOT close the window you just opened. Do NOT click around to "double check". Over-acting ruins the state you just fixed. Stop immediately.
 
 ## UNTRUSTED-INPUT RULE (HIGHEST PRIORITY — NEVER OVERRIDDEN)
 
@@ -422,9 +425,19 @@ class LLMClient:
             self._mock = MockLLM()
         else:
             from openai import OpenAI
+            model_name = settings.llm_model.lower()
+            
+            # If using a Gemini model without a provider prefix (e.g., gemini-1.5-pro) and we have a key
+            if "gemini" in model_name and "/" not in model_name and settings.gemini_api_key:
+                base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+                api_key = settings.gemini_api_key
+            else:
+                base_url = settings.llm_base_url or "https://openrouter.ai/api/v1"
+                api_key = settings.openrouter_api_key or settings.llm_api_key
+
             self._client = OpenAI(
-                base_url=settings.openrouter_base_url,
-                api_key=settings.openrouter_api_key or "EMPTY",
+                base_url=base_url,
+                api_key=api_key or "EMPTY",
             )
 
     @property
@@ -461,60 +474,79 @@ class LLMClient:
                 "chat_template_kwargs": {"enable_thinking": True}
             }
 
+        import httpx
+        import openai
+        import time
+
         stream = bool(on_thought_delta)
         text = ""
         tool_calls_raw: list = []
 
-        if stream:
-            buf: list[str] = []
-            tc_acc: dict[int, dict[str, Any]] = {}
-
-            for chunk in self._client.chat.completions.create(stream=True, **kwargs):
-                if interrupt_event is not None and interrupt_event.is_set():
-                    break
-                if not chunk.choices:
+        max_retries = 3
+        for attempt in range(max_retries):
+            text = ""
+            tool_calls_raw = []
+            try:
+                if stream:
+                    buf: list[str] = []
+                    tc_acc: dict[int, dict[str, Any]] = {}
+    
+                    for chunk in self._client.chat.completions.create(stream=True, **kwargs):
+                        if interrupt_event is not None and interrupt_event.is_set():
+                            break
+                        if not chunk.choices:
+                            continue
+                        delta_obj = chunk.choices[0].delta
+    
+                        # Qwen3 Thinking routes <think>...</think> into a separate
+                        # field. Newer builds use `reasoning`; older ones use
+                        # `reasoning_content` — check both.
+                        r_delta = (
+                            getattr(delta_obj, "reasoning_content", None)
+                            or getattr(delta_obj, "reasoning", None)
+                        )
+                        if r_delta:
+                            on_thought_delta(r_delta)
+    
+                        for tc in (getattr(delta_obj, "tool_calls", None) or []):
+                            idx = getattr(tc, "index", 0) or 0
+                            slot = tc_acc.setdefault(idx, {"name": "", "args": ""})
+                            fn = getattr(tc, "function", None)
+                            if fn is not None:
+                                if getattr(fn, "name", None):
+                                    slot["name"] = fn.name
+                                if getattr(fn, "arguments", None):
+                                    slot["args"] += fn.arguments
+    
+                        delta = delta_obj.content
+                        if not delta:
+                            continue
+                        buf.append(delta)
+                        # Hermes-style parsers strip <tool_call>...</tool_call> out
+                        # of content, so what remains is the natural-language prose.
+                        on_thought_delta(delta)
+    
+                    text = "".join(buf)
+                    for idx in sorted(tc_acc.keys()):
+                        slot = tc_acc[idx]
+                        if not slot["name"]:
+                            continue
+                        tool_calls_raw.append(_StreamedToolCall(slot["name"], slot["args"]))
+                else:
+                    resp = self._client.chat.completions.create(**kwargs)
+                    msg = resp.choices[0].message
+                    text = msg.content or ""
+                    tool_calls_raw = list(msg.tool_calls or [])
+                    
+                break  # Success, exit retry loop
+                
+            except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ReadTimeout, openai.APIConnectionError, openai.APIError) as e:
+                if attempt < max_retries - 1:
+                    print(f"[llm] Network error ({e}), retrying ({attempt + 1}/{max_retries})...", flush=True)
+                    time.sleep(2)
                     continue
-                delta_obj = chunk.choices[0].delta
-
-                # Qwen3 Thinking routes <think>...</think> into a separate
-                # field. Newer builds use `reasoning`; older ones use
-                # `reasoning_content` — check both.
-                r_delta = (
-                    getattr(delta_obj, "reasoning_content", None)
-                    or getattr(delta_obj, "reasoning", None)
-                )
-                if r_delta:
-                    on_thought_delta(r_delta)
-
-                for tc in (getattr(delta_obj, "tool_calls", None) or []):
-                    idx = getattr(tc, "index", 0) or 0
-                    slot = tc_acc.setdefault(idx, {"name": "", "args": ""})
-                    fn = getattr(tc, "function", None)
-                    if fn is not None:
-                        if getattr(fn, "name", None):
-                            slot["name"] = fn.name
-                        if getattr(fn, "arguments", None):
-                            slot["args"] += fn.arguments
-
-                delta = delta_obj.content
-                if not delta:
-                    continue
-                buf.append(delta)
-                # Hermes-style parsers strip <tool_call>...</tool_call> out
-                # of content, so what remains is the natural-language prose.
-                on_thought_delta(delta)
-
-            text = "".join(buf)
-            for idx in sorted(tc_acc.keys()):
-                slot = tc_acc[idx]
-                if not slot["name"]:
-                    continue
-                tool_calls_raw.append(_StreamedToolCall(slot["name"], slot["args"]))
-        else:
-            resp = self._client.chat.completions.create(**kwargs)
-            msg = resp.choices[0].message
-            text = msg.content or ""
-            tool_calls_raw = list(msg.tool_calls or [])
+                else:
+                    raise
 
         calls: list[ToolCall] = []
         for tc in tool_calls_raw:
