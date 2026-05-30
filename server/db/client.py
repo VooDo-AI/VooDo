@@ -457,3 +457,20 @@ def get_all_solutions(limit: int = 100) -> list[SolutionRecord]:
     if skipped:
         log.warning("get_all_solutions: skipped %d malformed row(s)", skipped)
     return out
+
+def get_app_instructions(mode: str) -> dict[str, str]:
+    """Return all app instructions for the given mode."""
+    sql = "SELECT topic, control_instruction, guide_instruction FROM app_instructions"
+    try:
+        with _connect() as conn, conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+            out = {}
+            for row in rows:
+                inst = row["guide_instruction"] if mode == "guide" else row["control_instruction"]
+                if inst:
+                    out[row["topic"]] = inst
+            return out
+    except Exception as e:
+        print(f"Error fetching app instructions: {e}")
+        return {}

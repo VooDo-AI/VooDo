@@ -132,8 +132,8 @@ _AUDIT_ROTATE_BYTES = int(os.getenv("VOODO_AUDIT_ROTATE_BYTES", str(5 * 1024 * 1
 def _ensure_audit_dir() -> None:
     try:
         _AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as e:  # noqa: BLE001
+        print(f"Warning: Failed to create audit dir {_AUDIT_PATH.parent}: {e}")
 
 
 _ensure_audit_dir()
@@ -191,8 +191,8 @@ def _audit(event: str, name: str, args: dict[str, Any], result: Any = None) -> N
         # if _audit_scrub somehow misses something.
         with open(_AUDIT_PATH, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
-    except Exception:  # noqa: BLE001 — audit must never block dispatch
-        pass
+    except Exception as e:  # noqa: BLE001 - audit must never block dispatch
+        print(f"Warning: Failed to write audit log to {_AUDIT_PATH}: {e}")
 
 
 # Quick regex used to refuse obviously-shell-y `type()` content. The
@@ -343,7 +343,8 @@ def _validate_args(call: ToolCall) -> dict[str, Any] | None:
         try:
             from server.db.client import get_open_app_aliases
             aliases = get_open_app_aliases()
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            print(f"Warning: Failed to fetch open_app aliases from DB: {e}")
             aliases = {}
         if app in aliases:
             app = aliases[app]
@@ -430,6 +431,16 @@ def _validate_args(call: ToolCall) -> dict[str, Any] | None:
             level = int(args.get("level", 50))
         except (TypeError, ValueError):
             return {"error": "change_display_brightness: level must be int"}
+
+    elif name == "search_files":
+        dir_path = str(args.get("dir_path", ""))
+        if dir_path.startswith("\\\\") or dir_path.startswith("//"):
+            return {"error": "search_files refused: UNC paths are not allowed."}
+
+    elif name == "read_file_preview":
+        file_path = str(args.get("file_path", ""))
+        if file_path.startswith("\\\\") or file_path.startswith("//"):
+            return {"error": "read_file_preview refused: UNC paths are not allowed."}
         args["level"] = max(0, min(level, 100))
 
     # Per-session destructive-action cap.
@@ -889,6 +900,7 @@ def dispatch(call: ToolCall, computer: Any) -> dict[str, Any]:
         _audit("error", name, call.args, out)
         return out
     except Exception as e:  # noqa: BLE001
+        print(f"Warning: Tool {name} raised an unhandled exception: {e}")
         out = {"error": f"{type(e).__name__}: {e}"}
         _audit("error", name, call.args, out)
         return out
