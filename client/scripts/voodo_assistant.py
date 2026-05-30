@@ -374,10 +374,11 @@ class VoodoAssistant(QWidget):
                 font-family: 'Segoe UI', sans-serif;
                 background: white;
                 border-radius: 12px;
+                border-bottom-left-radius: 4px;
                 padding: 4px 12px;
             }
         """)
-        right_col.addWidget(self.status_lbl)
+        right_col.addWidget(self.status_lbl, 0, Qt.AlignLeft)
 
         # Input row (input + history btn + close btn)
         in_row = QHBoxLayout()
