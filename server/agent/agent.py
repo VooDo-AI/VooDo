@@ -239,7 +239,16 @@ def run_agent(
             )
         body += "## Current screen"
         return [
-            {"role": "system", "content": llm.system_prompt},
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": llm.system_prompt,
+                        "cache_control": {"type": "ephemeral"}
+                    }
+                ]
+            },
             build_user_message(body, latest_screen_b64,
                                role_header=None, image_dims=screen),
         ]
