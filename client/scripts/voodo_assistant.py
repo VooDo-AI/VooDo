@@ -708,11 +708,7 @@ class VoodoAssistant(QWidget):
 
         self._input_anim.stop()
         if thinking:
-            # Force the chat history panel closed during a session — the
-            # status line shows the live state, the bubble history is
-            # noisy while events stream in. User can re-open with 💬.
-            if self.hist_open:
-                self._toggle_history()
+            # User requested that we do NOT force the chat history closed.
             self.robot_box.raise_()
             self.thought_lbl.show()
             self.thought_lbl.raise_()
