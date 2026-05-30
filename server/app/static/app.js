@@ -225,6 +225,12 @@ function connect() {
   ws.onmessage = (e) => { renderEvent(JSON.parse(e.data)); };
 }
 
+window.addEventListener('beforeunload', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.close();
+  }
+});
+
 function attachFeedbackRow(parentEl, success, summary) {
   // Append a 👍 / 👎 row to a result/error message. Clicking sends a
   // {type:"feedback"} WS frame to the backend and locks the row with

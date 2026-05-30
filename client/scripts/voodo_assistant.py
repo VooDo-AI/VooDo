@@ -1082,6 +1082,21 @@ class VoodoAssistant(QWidget):
         self._add_bubble("System", f"Error: {msg}")
         self._unlock()
 
+    def _on_mode_change_signal(self, new_mode: str):
+        """Handle mode_change events broadcast by the server (e.g. when
+        the browser UI switches mode).  Update the widget to match."""
+        if not new_mode or new_mode == self.mode:
+            return
+        self.mode = new_mode
+        if new_mode == "guide":
+            self.mode_btn.setText("👆")
+            self.mode_btn.setToolTip("Mode: Show Me What to Click\nClick to switch back to Control My Computer")
+            self._set_status("mode: Show Me What to Click")
+        else:
+            self.mode_btn.setText("🤖")
+            self.mode_btn.setToolTip("Mode: Control My Computer (voodo acts)\nClick to switch to Show Me What to Click")
+            self._set_status("mode: Control My Computer")
+
     def _unlock(self):
         self.input.setEnabled(True)
         self.input.setFocus()
