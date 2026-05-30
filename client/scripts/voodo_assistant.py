@@ -414,6 +414,7 @@ class VoodoAssistant(QWidget):
         self._input_anim = QPropertyAnimation(self.input, b"maximumWidth")
         self._input_anim.setDuration(350)
         self._input_anim.setEasingCurve(QEasingCurve.InOutCubic)
+        self._input_anim.valueChanged.connect(lambda: self.update())
 
         # Mode toggle: "control" (default, voodo acts) vs "guide" (voodo only
         # highlights where to click). Click cycles between the two; tooltip
