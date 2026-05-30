@@ -52,7 +52,7 @@ ToolName = Literal[
 
 EventKind = Literal[
     "thought", "thought_delta",
-    "tool_call", "observation", "result", "error", "status",
+    "tool_call", "observation", "result", "error", "status", "mode_change",
 ]
 
 

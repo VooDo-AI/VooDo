@@ -219,7 +219,13 @@ function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws`);
   window.ws = ws;
-  ws.onopen  = () => setStatus("connected", "connected");
+  ws.onopen  = () => {
+    setStatus("connected", "connected");
+    const activeOpt = document.querySelector(".model-option.active");
+    if (activeOpt) {
+      ws.send(JSON.stringify({ type: "set_mode", mode: activeOpt.dataset.value }));
+    }
+  };
   ws.onclose = () => { setStatus("reconnecting…", "disconnected"); setTimeout(connect, 1500); };
   ws.onerror = () => setStatus("error", "disconnected");
   ws.onmessage = (e) => { renderEvent(JSON.parse(e.data)); };

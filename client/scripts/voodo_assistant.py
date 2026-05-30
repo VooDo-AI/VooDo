@@ -725,6 +725,13 @@ class VoodoAssistant(QWidget):
             self.mode_btn.setText("🤖")
             self.mode_btn.setToolTip("Mode: Control My Computer (voodo acts)\nClick to switch to Show Me What to Click")
             self._set_status("mode: Control My Computer")
+            
+        with self._ws_lock:
+            if self._ws is not None:
+                try:
+                    self._ws.send(json.dumps({"type": "set_mode", "mode": self.mode}))
+                except Exception:
+                    pass
 
     def _on_stop_clicked(self):
         # Tell the backend to cancel the in-flight run; the agent loop
