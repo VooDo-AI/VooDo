@@ -117,7 +117,7 @@ def run_agent(
     # 0. Preflight: executor connected. The LLM provider (OpenRouter) is
     # hit lazily on first chat call — no upfront probe.
     from server.app.bridge import bridge
-    if not bridge.connected:
+    if not bridge.is_connected(client_id):
         msg = (
             "No Windows executor is connected. Run client/scripts/dev_all.ps1 "
             "on the Windows machine you want fixed; it will dial this backend "
