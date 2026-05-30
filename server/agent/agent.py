@@ -52,6 +52,12 @@ from shared.security import cap_user_message, sanitize_for_prompt
 
 EmitFn = Callable[[AgentEvent], None]
 
+_SENSITIVE_ARG_TOOLS = {
+    "type": "text",
+    "write_clipboard": "text",
+    "focus_window": "window_title",
+    "search_files": "query",
+}
 
 def _print_emit(event: AgentEvent) -> None:
     print(json.dumps({"kind": event.kind, "payload": event.payload}, default=str))
