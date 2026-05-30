@@ -40,6 +40,7 @@ _ALLOWED_TOOLS: set[str] = {
     "get_ip_info", "list_printers", "check_camera", "list_usb_devices",
     "check_disk_space", "get_event_log_errors", "list_startup_programs",
     "read_clipboard", "search_files", "read_file_preview",
+    "get_specific_instructions",
     # system controls
     "set_volume", "set_default_audio_device", "toggle_network",
     "change_display_brightness", "write_clipboard",
@@ -852,10 +853,24 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_specific_instructions",
+            "description": "Get specific instructions for an app (e.g., zoom, teams) or a system UI mechanic (e.g., taskbar, typing). Use this whenever you need to interact with these topics.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "The topic to get instructions for."}
+                },
+                "required": ["topic"],
+            },
+        },
+    },
 ]
 
 
-def dispatch(call: ToolCall, computer: Any) -> dict[str, Any]:
+def dispatch(call: ToolCall, computer: Any, mode: str = "control") -> dict[str, Any]:
     """Execute a ToolCall via the `computer` module. Returns a result dict.
 
     Hardened path:
@@ -873,6 +888,15 @@ def dispatch(call: ToolCall, computer: Any) -> dict[str, Any]:
     if rejection is not None:
         _audit("deny", name, call.args, rejection)
         return rejection
+
+    # Server-side tool implementation (does not run on the Windows executor)
+    if name == "get_specific_instructions":
+        from server.agent.instructions import get_instructions
+        topic = str(call.args.get("topic", ""))
+        result = get_instructions(topic, mode)
+        out = {"ok": True, "result": result}
+        _audit("call", name, call.args, out)
+        return out
 
     fn: Callable[..., Any] | None = getattr(computer, name, None)
     if fn is None:
