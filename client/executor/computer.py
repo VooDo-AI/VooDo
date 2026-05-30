@@ -192,7 +192,14 @@ def type(text: str) -> dict[str, Any]:  # noqa: A001 — matches tool name
     if "\x00" in text:
         return {"error": "type: null bytes not allowed"}
     text = text[:500]
-    _pyautogui().typewrite(text, interval=0.02)
+    
+    try:
+        from pynput.keyboard import Controller
+        # pynput's type() uses KEYEVENTF_UNICODE on Windows, immune to keyboard layout
+        Controller().type(text)
+    except ImportError:
+        _pyautogui().typewrite(text, interval=0.02)
+        
     return {"typed_len": len(text)}
 
 
