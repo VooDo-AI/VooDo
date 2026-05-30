@@ -155,9 +155,7 @@ def screenshot() -> dict[str, Any]:
         img = Image.frombytes("RGB", raw.size, raw.rgb)
 
     buf = io.BytesIO()
-    # Smart Downgrading: Compress to WebP to drastically reduce base64 size and latency,
-    # without altering the resolution/coordinate-system.
-    img.save(buf, format="WEBP", quality=65)
+    img.save(buf, format="PNG")
     return {
         "image_b64": base64.b64encode(buf.getvalue()).decode(),
         "width": img.width,

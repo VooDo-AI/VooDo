@@ -150,7 +150,7 @@ def run_agent(
                 hint = sanitize_for_prompt(matches[0].record.problem_summary)
                 if hint:
                     message = UserMessage(
-                        text=f"{message.text}\n\n[TRUSTED SYSTEM HINT: {hint}]",
+                        text=f"{message.text}\n\n[hint from past run (untrusted): {hint}]",
                         attachments=message.attachments,
                     )
         except Exception as e:  # noqa: BLE001 — DB is best-effort
@@ -259,16 +259,7 @@ def run_agent(
             )
         body += "## Current screen"
         return [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": llm.system_prompt,
-                        "cache_control": {"type": "ephemeral"}
-                    }
-                ]
-            },
+            {"role": "system", "content": llm.system_prompt},
             build_user_message(body, latest_screen_b64,
                                role_header=None, image_dims=screen),
         ]
@@ -329,6 +320,7 @@ def run_agent(
                 emit(AgentEvent(kind="thought", payload={"text": "", "stream": True}))
             emit(AgentEvent(kind="thought_delta", payload={"text": s}))
 
+        emit(AgentEvent(kind="status", payload={"msg": "Thinking..."}))
         thought, calls = llm.chat(
             messages, TOOL_SCHEMAS, screen=screen, on_thought_delta=_on_delta,
             interrupt_event=interrupt_event,
@@ -377,7 +369,7 @@ def run_agent(
             # would actually change the user's system (tools, hotkeys, type).
             if mode == "guide":
                 click_kinds = ("click", "double_click", "right_click")
-                allowed_meta = ("finish", "screenshot", "wait", "get_specific_instructions")
+                allowed_meta = ("finish", "screenshot", "wait")
                 if call.name in click_kinds:
                     label_map = {
                         "click": "click",
@@ -511,7 +503,7 @@ def run_agent(
                 continue
 
             emit(AgentEvent(kind="tool_call", payload=call.model_dump()))
-            result = dispatch(call, computer, mode)
+            result = dispatch(call, computer)
             # Graceful degradation: if we passed `type_hint` and the executor
             # is an older build that doesn't accept it, retry once WITHOUT
             # type_hint. The user gets the spotlight (no bubble) instead of
@@ -531,7 +523,7 @@ def run_agent(
                 emit(AgentEvent(kind="status", payload={"msg":
                     "executor is older — retrying highlight without type_hint "
                     "(no bubble; restart executor to enable)"}))
-                result = dispatch(fallback_call, computer, mode)
+                result = dispatch(fallback_call, computer)
                 call = fallback_call
             steps.append(SolutionStep(action=call, note=thought or None))
             # Plain-text action-log entry for the next turn's user message.
@@ -758,6 +750,7 @@ def run_agent(
         if call.name not in ("screenshot", "wait"):
             delay = _POST_ACTION_DELAY.get(call.name, 0.1)
             if delay > 0:
+                emit(AgentEvent(kind="status", payload={"msg": f"waiting {delay:.2f}s for UI to settle..."}))
                 time.sleep(delay)
             try:
                 fresh = computer.screenshot()

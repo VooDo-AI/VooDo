@@ -150,41 +150,37 @@
     </main>
   </div>
   <script src="/static/app.js"></script>
-    <script>
-      function toggleMainTheme() {
-        const html = document.documentElement;
-        const label = document.getElementById('mainThemeLabel');
-        if (html.classList.contains('light')) {
-          html.classList.remove('light');
-          label.textContent = 'Dark';
-          localStorage.setItem('voodo-theme', 'dark');
-        } else {
-          html.classList.add('light');
-          label.textContent = 'Light';
-          localStorage.setItem('voodo-theme', 'light');
-        }
+  <script>
+    function toggleMainTheme() {
+      const html = document.documentElement;
+      const label = document.getElementById('mainThemeLabel');
+      if (html.classList.contains('light')) {
+        html.classList.remove('light');
+        label.textContent = 'Light';
+        localStorage.setItem('voodo-theme', 'dark');
+      } else {
+        html.classList.add('light');
+        label.textContent = 'Dark';
+        localStorage.setItem('voodo-theme', 'light');
       }
+    }
 
-      window.addEventListener('storage', (e) => {
-        if (e.key !== 'voodo-theme') return;
-        const label = document.getElementById('mainThemeLabel');
-        if (e.newValue === 'light') {
-          document.documentElement.classList.add('light');
-          if (label) label.textContent = 'Light';
-        } else {
-          document.documentElement.classList.remove('light');
-          if (label) label.textContent = 'Dark';
-        }
-      });
+    window.addEventListener('storage', (e) => {
+      if (e.key !== 'voodo-theme') return;
+      const label = document.getElementById('mainThemeLabel');
+      if (e.newValue === 'light') {
+        document.documentElement.classList.add('light');
+        if (label) label.textContent = 'Dark';
+      } else {
+        document.documentElement.classList.remove('light');
+        if (label) label.textContent = 'Light';
+      }
+    });
 
-      document.addEventListener('DOMContentLoaded', () => {
-        const saved = localStorage.getItem('voodo-theme');
-        const label = document.getElementById('mainThemeLabel');
-        if (saved === 'light' && label) {
-            label.textContent = 'Light';
-        } else if (label) {
-            label.textContent = 'Dark';
-        }
+    document.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('voodo-theme');
+      const label = document.getElementById('mainThemeLabel');
+      if (saved === 'light' && label) label.textContent = 'Dark';
 
       const selector = document.getElementById('model-selector');
       const dropdown = document.getElementById('model-dropdown');
@@ -206,19 +202,16 @@
         }
       }
 
-        dropdown.querySelectorAll('.model-option').forEach(opt => {
-          opt.addEventListener('click', (e) => {
-            e.stopPropagation();
-            dropdown.querySelectorAll('.model-option').forEach(o => o.classList.remove('active'));
-            opt.classList.add('active');
-            selectedLabel.textContent = opt.textContent;
-            localStorage.setItem('voodo-mode', opt.dataset.value);
-            dropdown.classList.remove('open');
-            if (window.ws && window.ws.readyState === WebSocket.OPEN) {
-              window.ws.send(JSON.stringify({type: "set_mode", mode: opt.dataset.value}));
-            }
-          });
+      dropdown.querySelectorAll('.model-option').forEach(opt => {
+        opt.addEventListener('click', (e) => {
+          e.stopPropagation();
+          dropdown.querySelectorAll('.model-option').forEach(o => o.classList.remove('active'));
+          opt.classList.add('active');
+          selectedLabel.textContent = opt.textContent;
+          localStorage.setItem('voodo-mode', opt.dataset.value);
+          dropdown.classList.remove('open');
         });
+      });
 
       document.addEventListener('click', () => dropdown.classList.remove('open'));
     });

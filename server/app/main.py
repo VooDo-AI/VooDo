@@ -288,11 +288,6 @@ async def ws_chat(ws: WebSocket) -> None:
                 if isinstance(iev, threading.Event):
                     iev.clear()
                 continue
-            if t == "set_mode":
-                # Broadcast mode change to all connected clients
-                await _broadcast(AgentEvent(kind="mode_change", payload={"mode": data.get("mode")}))
-                continue
-            if t == "approve_keyboard":
             if msg_type == "approve_keyboard":
                 # User granted keyboard/mouse access from the permission popup.
                 # Mark approved and resume the paused agent in one step.
@@ -409,37 +404,6 @@ async def ws_chat(ws: WebSocket) -> None:
         raise
 
 
-def _on_subscriber_drop(ws: WebSocket) -> None:
-    """Remove a /ws subscriber.
-
-    • If the dropped socket was the floating widget and no other widget
-      remains, auto-pause the in-flight run (closing the widget is the
-      user's "wait, I want to think about this" signal).
-    • If ALL subscribers are gone (no browser tab AND no widget), fully
-      cancel the in-flight run — nobody is watching, so there's no point
-      in continuing (and it could be dangerous to keep clicking unseen).
-    """
-    _subscribers.discard(ws)
-    was_widget = ws in _widget_subscribers
-    _widget_subscribers.discard(ws)
-
-    # No subscribers left at all → hard cancel.
-    if not _subscribers:
-        cev = _session.get("cancel")
-        if isinstance(cev, threading.Event):
-            cev.set()
-        # Also clear the interrupt so the agent loop can exit cleanly
-        # instead of staying stuck on the pause gate.
-        iev = _session.get("interrupt")
-        if isinstance(iev, threading.Event):
-            iev.clear()
-        return
-
-    # Widget dropped but browser(s) still connected → just pause.
-    if was_widget and not _widget_subscribers:
-        iev = _session.get("interrupt")
-        if isinstance(iev, threading.Event):
-            iev.set()
     def _on_subscriber_drop(ws: WebSocket) -> None:
         """Remove a /ws subscriber. If the dropped socket was the floating
         widget, auto-pause the in-flight run - closing the widget is the
