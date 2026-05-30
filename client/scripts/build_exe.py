@@ -11,9 +11,9 @@ BUILD_DIR  = r"C:\Users\liavs\VooDo-Local\client\scripts"
 
 # 1. Convert PNG -> ICO using Pillow (already installed)
 print("[build] Converting icon PNG -> ICO ...")
-from PIL import Image
+from PIL import Image, ImageOps
 img = Image.open(ICON_PNG).convert("RGBA")
-img = img.resize((256, 256), Image.LANCZOS)
+img = ImageOps.pad(img, (256, 256), color=(0, 0, 0, 0), method=Image.LANCZOS)
 img.save(ICON_ICO, format="ICO", sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
 print(f"[build] Icon saved: {ICON_ICO}")
 
