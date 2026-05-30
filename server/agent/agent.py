@@ -300,7 +300,6 @@ def run_agent(
                 emit(AgentEvent(kind="thought", payload={"text": "", "stream": True}))
             emit(AgentEvent(kind="thought_delta", payload={"text": s}))
 
-        emit(AgentEvent(kind="status", payload={"msg": "Thinking..."}))
         thought, calls = llm.chat(
             messages, TOOL_SCHEMAS, screen=screen, on_thought_delta=_on_delta,
             interrupt_event=interrupt_event,
