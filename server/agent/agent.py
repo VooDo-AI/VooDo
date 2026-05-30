@@ -732,7 +732,7 @@ def run_agent(
 
                 # --- SUPERVISOR CHECK ---
                 if final_success:
-                    emit(AgentEvent(kind="status", payload={"msg": "Supervisor is verifying the result..."}))
+                    emit(AgentEvent(kind="status", payload={"msg": "Verifying the result..."}))
                     from server.agent.supervisor import verify_finish
                     import re
                     # Original user goal is stored in message.text, stripped of hints and system contexts.
@@ -740,12 +740,15 @@ def run_agent(
                     sv_res = verify_finish(orig_goal, final_summary)
                     if not sv_res.get("approved", True):
                         # Supervisor rejected the finish.
-                        emit(AgentEvent(kind="status", payload={"msg": "Supervisor rejected finish, pushing back."}))
-                        action_log.append(f"finish() -> REJECTED by Supervisor: {sv_res.get('feedback', '')}")
+                        emit(AgentEvent(kind="status", payload={"msg": "Verification failed, pushing back."}))
+                        action_log.append(f"finish() -> REJECTED: {sv_res.get('feedback', '')}")
                         continue
                     else:
                         # Approved! Use the supervisor's friendly summary.
                         final_summary = sv_res.get("feedback", final_summary)
+                
+                # Show the final summary as a status message before exiting
+                emit(AgentEvent(kind="status", payload={"msg": final_summary}))
                 emit(AgentEvent(
                     kind="result",
                     payload={"success": final_success, "summary": final_summary},

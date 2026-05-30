@@ -76,7 +76,11 @@ insert into open_app_aliases (alias, canonical) values
     ('word',       'winword'),
     ('edge',       'msedge'),
     ('vscode',     'code'),
-    ('calculator', 'calc')
+    ('calculator', 'calc'),
+    ('settings',   'ms-settings:'),
+    ('zoom',       'zoom'),
+    ('teams',      'ms-teams:'),
+    ('task manager', 'taskmgr')
 on conflict (alias) do nothing;
 
 create table if not exists app_instructions (
