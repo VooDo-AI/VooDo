@@ -73,9 +73,8 @@ if (-not $NoBrowser) {
     if     ($Backend -like 'wss://*') { $http = $Backend -replace '^wss://', 'https://' }
     elseif ($Backend -like 'ws://*')  { $http = $Backend -replace '^ws://',  'http://'  }
     else                              { $http = $Backend }
-    # ?new=1 tells the chat UI to spawn a fresh conversation instead of
-    # restoring whichever chat was active last time (issue #26).
-    $url = "$http/?new=1"
+    # Launch the chat UI in the browser. It will restore the last active chat.
+    $url = "$http/"
     Ok "opening chat UI: $url"
     Start-Process $url
 }
