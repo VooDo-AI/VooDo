@@ -525,7 +525,26 @@ def set_volume(level: int, mute: bool = False) -> dict[str, Any]:
 
 
 def get_audio_devices() -> dict[str, Any]:
-    return {"status": "requires external module (AudioDeviceCmdlets), skipped in native implementation."}
+    try:
+        import subprocess
+        import json
+        cmd = [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-CimInstance Win32_SoundDevice -ErrorAction SilentlyContinue | Select-Object Name, Status | ConvertTo-Json -Compress"
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.stdout.strip():
+            devices = json.loads(res.stdout)
+            if isinstance(devices, dict):
+                devices = [devices]
+            if not devices:
+                return {"error": "No audio devices found on the system."}
+            return {"devices": devices}
+        return {"error": "No audio devices found on the system."}
+    except Exception as e:
+        return {"error": f"Failed to retrieve audio devices: {str(e)}"}
 
 
 def set_default_audio_device(device_name: str) -> dict[str, Any]:
