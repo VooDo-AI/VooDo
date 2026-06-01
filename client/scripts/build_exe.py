@@ -26,8 +26,9 @@ print("[build] Building VooDo.exe ...")
 subprocess.run([
     VENV_PY, "-m", "PyInstaller",
     "--onefile",
-    "--console",
+    "--windowed",
     f"--icon={ICON_ICO}",
+    f"--add-data={ICON_PNG};.",
     f"--name=VooDo",
     f"--distpath={DESKTOP}",
     f"--workpath={os.path.join(BUILD_DIR, 'build_tmp')}",
