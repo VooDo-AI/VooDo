@@ -734,7 +734,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "directory": {"type": "string", "description": "e.g. C:\\Users\\liavs\\Documents"}
+                    "directory": {"type": "string", "description": "e.g. C:\\Users\\<username>\\Documents"}
                 },
                 "required": ["query"],
             },

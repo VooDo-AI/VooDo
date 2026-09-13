@@ -12,6 +12,10 @@ __pycache__/
 .env
 .env.local
 
+# Build artifacts & dev leftovers
+*.exe
+*.patch
+
 # Editor / IDE
 .vscode/
 .idea/

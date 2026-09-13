@@ -1,13 +1,17 @@
 """Build VooDo.exe – run once, produces Desktop\\VooDo.exe."""
 import subprocess, sys, os, shutil
+from pathlib import Path
 
-VENV_PIP   = r"C:\Users\liavs\VooDo-Local\client\.venv\Scripts\pip.exe"
-VENV_PY    = r"C:\Users\liavs\VooDo-Local\client\.venv\Scripts\python.exe"
-ICON_PNG   = r"C:\Users\liavs\VooDo-Local\client\scripts\voodo_icon.png"
-ICON_ICO   = r"C:\Users\liavs\VooDo-Local\client\scripts\voodo.ico"
-LAUNCHER   = r"C:\Users\liavs\VooDo-Local\client\scripts\voodo_launcher.py"
-DESKTOP    = r"C:\Users\liavs\Desktop"
-BUILD_DIR  = r"C:\Users\liavs\VooDo-Local\client\scripts"
+# All paths are relative to this script's directory.
+SCRIPTS_DIR = Path(__file__).resolve().parent
+CLIENT_DIR  = SCRIPTS_DIR.parent
+VENV_PIP    = str(CLIENT_DIR / ".venv" / "Scripts" / "pip.exe")
+VENV_PY     = str(CLIENT_DIR / ".venv" / "Scripts" / "python.exe")
+ICON_PNG    = str(SCRIPTS_DIR / "voodo_icon.png")
+ICON_ICO    = str(SCRIPTS_DIR / "voodo.ico")
+LAUNCHER    = str(SCRIPTS_DIR / "voodo_launcher.py")
+DESKTOP     = str(Path.home() / "Desktop")
+BUILD_DIR   = str(SCRIPTS_DIR)
 
 # 1. Convert PNG -> ICO using Pillow (already installed)
 print("[build] Converting icon PNG -> ICO ...")
