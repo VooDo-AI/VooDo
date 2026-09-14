@@ -1,6 +1,6 @@
 # Voodo — AI Tech Support Agent
 
-> **Winner — [HackAgents BIU 2026](https://ofirlin.github.io/hackagents-biu/)** — the 24-hour agentic-AI hackathon hosted by Bar-Ilan University, May 14–15, 2026.
+> **Winner — [HackAgents BIU 2026](https://engineering.biu.ac.il/en/node/14627)** — the 24-hour agentic-AI hackathon hosted by Bar-Ilan University, May 14–15, 2026.
 
 ## Team
 
