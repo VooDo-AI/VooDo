@@ -6,10 +6,10 @@
 
 | Member | LinkedIn |
 |---|---|
-| Yarden Carmi | [linkedin.com/in/yarden-carmi](https://www.linkedin.com/in/yarden-carmi) |
+| Liav Samiya | [linkedin.com/in/liav-samiya-76b6b327a](https://www.linkedin.com/in/liav-samiya-76b6b327a/) |
 | Tal Segal | [linkedin.com/in/tal-segal-a405992a6](https://www.linkedin.com/in/tal-segal-a405992a6/) |
 | Lee Seznayof | [linkedin.com/in/lee-seznayof](https://www.linkedin.com/in/lee-seznayof/) |
-| Liav Samiya | [linkedin.com/in/liav-samiya-76b6b327a](https://www.linkedin.com/in/liav-samiya-76b6b327a/) |
+| Yarden Carmi | [linkedin.com/in/yarden-carmi](https://www.linkedin.com/in/yarden-carmi) |
 
 ---
 
